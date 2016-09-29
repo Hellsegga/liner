@@ -830,9 +830,9 @@ mainLoop:
 
 				if !s.multiLineMode {
 					inc = 0
-					if(unicode.IsOneOf(doubleWidth, v)){
+					if unicode.IsOneOf(doubleWidth, v) {
 						inc = 2
-						} else if(!unicode.IsOneOf(zeroWidth, v)){
+					} else if !unicode.IsOneOf(zeroWidth, v) {
 						inc = 1
 					}
 
