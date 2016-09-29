@@ -93,6 +93,18 @@ func (s *State) refresh(prompt []rune, buf []rune, pos int) error {
 	if s.multiLineMode {
 		return s.refreshMultiLine(prompt, buf, pos)
 	} else {
+		s.glyphCount = countGlyphs(buf)
+		s.glyphPos = countGlyphs(buf[:pos])
+		return s.refreshSingleLine(prompt, buf, pos)
+	}
+}
+
+func (s *State) refreshNoSLRecount(prompt []rune, buf []rune, pos int, inc int) error {
+	if s.multiLineMode {
+		return s.refreshMultiLine(prompt, buf, pos)
+	} else {
+		// Optimization to not recount glyph from whole line at each new character.
+		// Instead we do it in the mainloop when the char is processed by incrementing the count
 		return s.refreshSingleLine(prompt, buf, pos)
 	}
 }
@@ -105,8 +117,8 @@ func (s *State) refreshSingleLine(prompt []rune, buf []rune, pos int) error {
 	}
 
 	pLen := countGlyphs(prompt)
-	bLen := countGlyphs(buf)
-	pos = countGlyphs(buf[:pos])
+	bLen := s.glyphCount
+	pos = s.glyphPos
 	if pLen+bLen < s.columns {
 		_, err = fmt.Print(string(buf))
 		s.eraseLine()
@@ -591,6 +603,7 @@ func (s *State) PromptWithSuggestion(prompt string, text string, pos int) (strin
 	historyPos := len(prefixHistory)
 	historyAction := false // used to mark history related actions
 	killAction := 0        // used to mark kill related actions
+	inc := 0
 
 	defer s.stopPrompt()
 
@@ -604,6 +617,8 @@ func (s *State) PromptWithSuggestion(prompt string, text string, pos int) (strin
 restart:
 	s.startPrompt()
 	s.getColumns()
+	s.glyphCount = 0
+	s.glyphPos = 0
 
 mainLoop:
 	for {
@@ -812,6 +827,19 @@ mainLoop:
 			case 0, 28, 29, 30, 31:
 				fmt.Print(beep)
 			default:
+
+				if !s.multiLineMode {
+					inc = 0
+					if(unicode.IsOneOf(doubleWidth, v)){
+						inc = 2
+						} else if(!unicode.IsOneOf(zeroWidth, v)){
+						inc = 1
+					}
+
+					s.glyphCount += inc
+					s.glyphPos += inc
+				}
+
 				if pos == len(line) && !s.multiLineMode && countGlyphs(p)+countGlyphs(line) < s.columns-1 {
 					line = append(line, v)
 					fmt.Printf("%c", v)
@@ -819,7 +847,7 @@ mainLoop:
 				} else {
 					line = append(line[:pos], append([]rune{v}, line[pos:]...)...)
 					pos++
-					s.refresh(p, line, pos)
+					s.refreshNoSLRecount(p, line, pos, inc)
 				}
 			}
 		case action:
